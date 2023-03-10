@@ -41,10 +41,10 @@ class AudioData:
         return AudioData._max_possible(self.second)
 
     def first_sample_times(self):
-        return AudioData._get_sample_times(self.first)
+        return AudioData._get_sample_times(self.first, self.sample_frequency)
 
     def second_sample_times(self):
-        return AudioData._get_sample_times(self.second)
+        return AudioData._get_sample_times(self.second, self.sample_frequency)
 
     @staticmethod
     def _max_possible(audio_data: np.array):
@@ -145,10 +145,15 @@ def segment(sample_count, number_of_segments):
     return segment_ranges
 
 def get_segments(audio_data: AudioData, segment_time: float):
+    """
+    Split the given audio data into segments of length segment_time (except the last,
+    which may be shorter.)  Then do a fourier transform on each segment, and return
+    all the data for each segment as an AnalysisSegment dataclass instance.
+    """
     sample_times = audio_data.first_sample_times()
     sample_count = len(sample_times)
     full_time_span = max(sample_times) - min(sample_times)
-    number_of_segments = math.ceil(full_time_span / args.segment_time)
+    number_of_segments = math.ceil(full_time_span / segment_time)
     segment_ranges = segment(sample_count, number_of_segments)
 
     segment_data = []
@@ -168,11 +173,42 @@ def get_segments(audio_data: AudioData, segment_time: float):
 
     return segment_data
 
-def add_frequency_subplot(segment, row_count, row, sharex):
+def add_frequency_subplot(segment: AnalysisSegment, row_count: int, row: int, sharex):
+    fourier_magnitudes = np.abs(segment.fourier)
+    max_fourier_mag = max(fourier_magnitudes)
     freq_plot = plt.subplot(row_count, 1, row, sharex=sharex)
-    freq_plot.plot(segment.frequencies, np.abs(segment.fourier))
+    freq_plot.plot(segment.frequencies, fourier_magnitudes)
+
+    min_allowed_mag = max_fourier_mag * 0.05
+    mags_above_min = fourier_magnitudes > min_allowed_mag
+    frequencies_above_min = segment.frequencies[mags_above_min]
+    max_non_zeroish_freq = max(frequencies_above_min)
+
+    freq_plot.set_xbound(0, max_non_zeroish_freq)
+    freq_plot.set_ybound(0, 1.05*max_fourier_mag)
+
+    freq_plot.set_xlabel("")
+    freq_plot.set_ylabel("Magnitude\n[-]")
+    freq_plot.grid(visible=True, axis="both")
+    sample_times = segment.time_points
+    freq_plot.annotate(text=f"{min(sample_times):.2f}-{max(sample_times):.2f} [s]", xy=(0.8, 0.75), xycoords="axes fraction")
 
     return freq_plot
+
+def add_time_plot(audio_data: AudioData, plot_row_count: int):
+    time_plot = plt.subplot(plot_row_count,1,1)
+    sample_times = audio_data.first_sample_times()
+    time_plot.plot(sample_times, audio_data.first)
+    time_plot.grid(visible=True, which="both")
+    time_plot.set_xlabel("Time [s]")
+    time_plot.set_ylabel("Normalized Magnitude\n[-]")
+    time_plot.set_xbound(*get_bound_with_buffer(sample_times, buffer_fraction=0))
+    time_plot.set_ybound(*get_bound_with_buffer(audio_data.first))
+
+    return time_plot
+
+def get_bound_with_buffer(data, buffer_fraction=0.05):
+    return ((1.0 + buffer_fraction)*min(data), (1.0 + buffer_fraction)*max(data))
 
 if __name__=="__main__":
     import argparse
@@ -199,17 +235,23 @@ if __name__=="__main__":
     audio_data = get_audio_data(args.in_file, time_window=(args.start, args.end), verbose_ffmpeg=args.verbose_ffmpeg)
     segment_data = get_segments(audio_data, args.segment_time)
 
+    #with plt.rc_context(fname="wind_sounds_rc.params"):
     plot_row_count = len(segment_data) + 1 # + 1 for the time domain plot
-    time_plot = plt.subplot(plot_row_count,1,1)
-    time_plot.plot(audio_data.first_sample_times(), audio_data.first)
+    add_time_plot(audio_data, plot_row_count)
 
-    freq_x_axis = None
+    # Link the X axes of all the frequency plots so zoom / select affects all of them
+    # together.  Also keep the last axis so we can not repeat the x axis labels across
+    # all frequency plots.
+    first_freq_ax = None
+    last_freq_ax = None
     for (idx, seg) in enumerate(segment_data):
         row = idx + 2 # +1 for time domain plot, and +1 because plots are 1 indexed
-        freq_ax = add_frequency_subplot(seg, plot_row_count, row, sharex=freq_x_axis)
-        if sharex is None:
-            sharex = freq_ax
+        freq_ax = add_frequency_subplot(seg, plot_row_count, row, sharex=first_freq_ax)
+        if first_freq_ax is None:
+            first_freq_ax = freq_ax
+        last_freq_ax = freq_ax
 
+    last_freq_ax.set_xlabel("Frequency [Hz]")
     plt.savefig(args.out_file, format="svg", transparent=True)
 
     if args.plot:
