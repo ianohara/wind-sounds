@@ -6,7 +6,7 @@ def get_tone(frequency, duration, sample_rate):
     """
     Get numpy tone data.  This is cribbed from the scipy.io.wavfile.write docs.
     """
-    time_points = np.linspace(0, duration, duration * sample_rate)
+    time_points = np.linspace(0, duration, int(duration * sample_rate))
     amplitude = np.iinfo(np.int16).max
     tone_data = amplitude * np.sin(2 * np.pi * frequency * time_points)
 
