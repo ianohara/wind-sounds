@@ -231,28 +231,30 @@ if __name__=="__main__":
 
     if args.segment_time <= 0:
         raise ValueError("Segment time must be > 0s")
-
+    info(f"Loading and analyzing data from '{args.in_file}'...")
     audio_data = get_audio_data(args.in_file, time_window=(args.start, args.end), verbose_ffmpeg=args.verbose_ffmpeg)
     segment_data = get_segments(audio_data, args.segment_time)
 
-    #with plt.rc_context(fname="wind_sounds_rc.params"):
-    plot_row_count = len(segment_data) + 1 # + 1 for the time domain plot
-    add_time_plot(audio_data, plot_row_count)
+    info(f"Generating plot and writing to '{args.out_file}'")
+    with plt.rc_context(fname="wind_sounds_rc.params"):
+        plot_row_count = len(segment_data) + 1 # + 1 for the time domain plot
+        add_time_plot(audio_data, plot_row_count)
 
-    # Link the X axes of all the frequency plots so zoom / select affects all of them
-    # together.  Also keep the last axis so we can not repeat the x axis labels across
-    # all frequency plots.
-    first_freq_ax = None
-    last_freq_ax = None
-    for (idx, seg) in enumerate(segment_data):
-        row = idx + 2 # +1 for time domain plot, and +1 because plots are 1 indexed
-        freq_ax = add_frequency_subplot(seg, plot_row_count, row, sharex=first_freq_ax)
-        if first_freq_ax is None:
-            first_freq_ax = freq_ax
-        last_freq_ax = freq_ax
+        # Link the X axes of all the frequency plots so zoom / select affects all of them
+        # together.  Also keep the last axis so we can not repeat the x axis labels across
+        # all frequency plots.
+        first_freq_ax = None
+        last_freq_ax = None
+        for (idx, seg) in enumerate(segment_data):
+            row = idx + 2 # +1 for time domain plot, and +1 because plots are 1 indexed
+            freq_ax = add_frequency_subplot(seg, plot_row_count, row, sharex=first_freq_ax)
+            if first_freq_ax is None:
+                first_freq_ax = freq_ax
+            last_freq_ax = freq_ax
 
-    last_freq_ax.set_xlabel("Frequency [Hz]")
-    plt.savefig(args.out_file, format="svg", transparent=True)
+        last_freq_ax.set_xlabel("Frequency [Hz]")
+        plt.savefig(args.out_file, format="png", transparent=True)
 
-    if args.plot:
-        plt.show()
+        if args.plot:
+            info("Showing interactive plot at user's request...")
+            plt.show()

@@ -37,4 +37,4 @@ if __name__ == "__main__":
         filename += ".wav"
 
     print(f"Writing tone to '{filename}'")
-    scipy.io.wavfile.write(filename, args.sample_rate, tone_data)
+    scipy.io.wavfile.write(filename, args.sample_rate, tone_data.astype(np.int16))
