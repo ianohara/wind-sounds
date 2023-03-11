@@ -33,6 +33,7 @@ class AudioData:
     sample_frequency: int
     first: np.array
     second: np.array
+    start_time: float
 
     def first_max_possible(self):
         return AudioData._max_possible(self.first)
@@ -41,10 +42,10 @@ class AudioData:
         return AudioData._max_possible(self.second)
 
     def first_sample_times(self):
-        return AudioData._get_sample_times(self.first, self.sample_frequency)
+        return AudioData._get_sample_times(self.first, self.start_time, self.sample_frequency)
 
     def second_sample_times(self):
-        return AudioData._get_sample_times(self.second, self.sample_frequency)
+        return AudioData._get_sample_times(self.second, self.start_time, self.sample_frequency)
 
     @staticmethod
     def _max_possible(audio_data: np.array):
@@ -54,14 +55,14 @@ class AudioData:
         return np.iinfo(audio_data.dtype).max
 
     @staticmethod
-    def _get_sample_times(audio_data, sample_frequency):
+    def _get_sample_times(audio_data, start_time, sample_frequency):
         """
         Return the times, starting with 0 as the start of the audio signal, of each
         audio signal data point in [s]
         """
         audio_duration_s = len(audio_data)/float(sample_frequency)
 
-        return np.linspace(0,audio_duration_s, len(audio_data))
+        return np.linspace(start_time, start_time + audio_duration_s, len(audio_data))
 
 @dataclass
 class AnalysisSegment:
@@ -82,6 +83,13 @@ class AnalysisSegment:
     frequencies: np.array
     fourier: np.array
 
+def mm_ss_to_s(timestamp):
+    try:
+        (mins, seconds) = timestamp.split(":")
+        return 60.0*float(mins) + float(seconds)
+    except Exception:
+        return None
+
 def get_audio_data(filename, time_window, verbose_ffmpeg=False):
     """
     Use ffmpeg to load the video file specified by filename, and return the
@@ -97,8 +105,10 @@ def get_audio_data(filename, time_window, verbose_ffmpeg=False):
 
     ffmpeg_dag = ffmpeg.input(filename).audio
 
+    start_time = 0.0
     if time_window and time_window[0]:
         verbose(f"atrim with start={time_window[0]}")
+        start_time = mm_ss_to_s(time_window[0])
         ffmpeg_dag = ffmpeg_dag.filter("atrim", start=time_window[0])
     if time_window and time_window[1]:
         verbose(f"atrim with end={time_window[1]}")
@@ -108,7 +118,7 @@ def get_audio_data(filename, time_window, verbose_ffmpeg=False):
     audio_data = scipy.io.wavfile.read(tmp_audio_filename)
     max_audio_value = np.iinfo(audio_data[1].dtype).max
 
-    return AudioData(sample_frequency=audio_data[0], first=audio_data[1][:,0]/float(max_audio_value), second=audio_data[1][:,1]/float(max_audio_value))
+    return AudioData(sample_frequency=audio_data[0], first=audio_data[1][:,0]/float(max_audio_value), second=audio_data[1][:,1]/float(max_audio_value), start_time=start_time)
 
 def get_freq_hz(data, sample_frequency):
     """
@@ -201,7 +211,7 @@ def add_time_plot(audio_data: AudioData, plot_row_count: int):
     time_plot.plot(sample_times, audio_data.first)
     time_plot.grid(visible=True, which="both")
     time_plot.set_xlabel("Time [s]")
-    time_plot.set_ylabel("Normalized Magnitude\n[-]")
+    time_plot.set_ylabel("Magnitude\n[-]")
     time_plot.set_xbound(*get_bound_with_buffer(sample_times, buffer_fraction=0))
     time_plot.set_ybound(*get_bound_with_buffer(audio_data.first))
 
